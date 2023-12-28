@@ -1,6 +1,6 @@
 # Modern Coordinate Modification and Verification System
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/pSm6CsjS5Rs?si=z6_U2DDYAtzVvKpe" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+[<img src="https://i.ytimg.com/vi/pSm6CsjS5Rs/maxresdefault.jpg">](https://www.youtube.com/watch?v=pSm6CsjS5Rs)
 
 # Table of Contents
 
