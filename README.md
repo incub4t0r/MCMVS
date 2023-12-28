@@ -36,8 +36,8 @@ CMVS as written in the development notebook of 4.0 had the following functions:
 - Allowed mirroring of splines across either the X, Y, or Z axis with a user-specified offset
 - Could color specific splines
 - Create, erase, and edit specific vectors inside a spline
-- Import/Export/Translation of `.DAT` files to `.DXF` files
-- Plotting of splines onto a printer communicating over a serial port
+- Import/Export/Translation of `.DAT` files to `Drawing Exchange Format`(`DXF`) and `Initial Graphics Exchange Specification`(`IGES`) files
+- Plotting of splines onto a printer communicating over a parallel port using `HPGL`
 - Icon buttons with 3D effects and shading drawn in program
 - Korean/English language support with a custom vector font for Korean characters
 - Saving screen buffer areas that are overlapped when opening a button submenu to redraw when the submenu is closed
