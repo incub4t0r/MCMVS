@@ -1,6 +1,6 @@
 # Modern Coordinate Modification and Verification System
 
-![A screenshot of MCMVS](img/mcmvs_screenshot.png)
+![A video of MCMVS](assets/img/mcmvs.mov)
 
 # Table of Contents
 
@@ -22,7 +22,7 @@ MCMVS is written in C using SDL2, built and tested on an M2 Arm Macbook Pro.
 
 ## CMVS (1993)
 
-![A photo of the original CMVS](img/cmvs_color_corrected.jpeg)
+![A photo of the original CMVS](assets/img/cmvs_color_corrected.jpeg)
 
 CMVS as pictured above is version 4.0, the first shippable version. Although CMVS can still be ran on DOS systems as of 2023, it is unstable and limited to older hardware.
 
@@ -43,6 +43,8 @@ CMVS as written in the development notebook of 4.0 had the following functions:
 - Saving screen buffer areas that are overlapped when opening a button submenu to redraw when the submenu is closed
 
 ## MCMVS (2023)
+
+![A screenshot of MCMVS](assets/img/mcmvs_screenshot.png)
 
 MCMVS is a modern rewrite of CMVS, with the following features:
 
