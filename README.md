@@ -1,6 +1,6 @@
 # Modern Coordinate Modification and Verification System
 
-![A video of MCMVS](assets/img/mcmvs.mov)
+![A video of MCMVS](assets/video/mcmvs.mp4)
 
 # Table of Contents
 
