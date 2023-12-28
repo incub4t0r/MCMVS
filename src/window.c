@@ -37,7 +37,7 @@ window_t * window_create (void)
         return NULL;
     }
 
-    p_window->width = WIDTH;
+    p_window->width  = WIDTH;
     p_window->height = HEIGHT;
 
     // if (SDL_SetWindowFullscreen(p_window->p_window,
@@ -68,10 +68,11 @@ window_t * window_create (void)
     }
 
     // set window width and height
-    p_window->width               = WIDTH;
-    p_window->height              = HEIGHT;
-    p_window->angles              = (angles_t) { 0, 0, 0 };
-    p_window->view_mod            = (view_mod_t) { p_window->width / 2, p_window->height / 2, 1 };
+    p_window->width  = WIDTH;
+    p_window->height = HEIGHT;
+    p_window->angles = (angles_t) { 0, 0, 0 };
+    p_window->view_mod
+        = (view_mod_t) { p_window->width / 2, p_window->height / 2, 1 };
     p_window->p_spline_arr        = spline_arr_create();
     p_window->p_mirror_spline_arr = spline_arr_create();
     p_window->present_points      = 0;
@@ -123,8 +124,6 @@ void window_multiline_render_text (window_t * p_window,
         line = strtok(NULL, "\n");
     }
 }
-
-
 
 /**
  * @brief Adds a double vertex to the window's raw vertices
@@ -219,6 +218,43 @@ void window_prepare (window_t * p_window)
               cos(phi_rad) * sin(theta_rad) * sin(psi_rad)
                   - sin(phi_rad) * cos(psi_rad),
               cos(phi_rad) * cos(theta_rad) } };
+
+    // // translate vertices to center
+    // double min_x = 0, min_y = 0, min_z = 0;
+    // double max_x = 0, max_y = 0, max_z = 0;
+    // double center_x = 0, center_y = 0, center_z = 0;
+
+    // for (int i = 0; i < p_window->p_spline_arr->size; i++)
+    // {
+    //     spline_t * p_spline = p_window->p_spline_arr->p_spline_arr[i];
+    //     for (int j = 0; j < p_spline->size; j++)
+    //     {
+    //         double_vertex_t * p_vertex = p_spline->pp_raw_vertices[j];
+    //         min_x                      = fmin(min_x, p_vertex->x);
+    //         min_y                      = fmin(min_y, p_vertex->y);
+    //         min_z                      = fmin(min_z, p_vertex->z);
+    //         max_x                      = fmax(max_x, p_vertex->x);
+    //         max_y                      = fmax(max_y, p_vertex->y);
+    //         max_z                      = fmax(max_z, p_vertex->z);
+    //     }
+    // }
+
+    // center_x = (max_x + min_x) / 2;
+    // center_y = (max_y + min_y) / 2;
+    // center_z = (max_z + min_z) / 2;
+
+    // // translate all vertices to center
+    // for (int i = 0; i < p_window->p_spline_arr->size; i++)
+    // {
+    //     spline_t * p_spline = p_window->p_spline_arr->p_spline_arr[i];
+    //     for (int j = 0; j < p_spline->size; j++)
+    //     {
+    //         double_vertex_t * p_vertex = p_spline->pp_raw_vertices[j];
+    //         p_vertex->x -= center_x;
+    //         p_vertex->y -= center_y;
+    //         p_vertex->z -= center_z;
+    //     }
+    // }
 
     for (int spline_idx = 0; spline_idx < p_window->p_spline_arr->size;
          spline_idx++)
@@ -337,7 +373,7 @@ void window_present (window_t * p_window)
 //                   p_window->p_points->size * sizeof(SDL_Point));
 //     p_window->p_points->p_points[p_window->p_points->size - 1] = new_point;
 // }
-bool g_is_mouse_down = false;
+bool g_activate_mouse = false;
 int  g_prev_mousex = 0, g_prev_mousey = 0;
 
 void window_input (window_t * p_window)
@@ -422,48 +458,127 @@ void window_input (window_t * p_window)
                     case SDLK_m:
                         p_window->show_mirror = !p_window->show_mirror;
                         break;
+                    case SDLK_LSHIFT:
+                        g_activate_mouse = true; // Set the flag when mouse
+                        SDL_GetMouseState(&g_prev_mousex, &g_prev_mousey);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case SDL_KEYUP:
+                switch (event.key.keysym.sym)
+                {
+                    case SDLK_LSHIFT:
+                        g_activate_mouse = false; // Set the flag when mouse
+                        break;
                     default:
                         break;
                 }
                 break;
             case SDL_MOUSEWHEEL:
-                if (event.wheel.y > 0)
+                if (g_activate_mouse)
                 {
-                    p_window->view_mod.y_offset += 20;
-                    // p_window->view_mod.scale_factor += 0.1;
+                    printf("Event type: %d\n", event.type);
+                    printf("Event wheel: %d\n", event.wheel.y);
+                    printf("Event wheel: %d\n", event.wheel.x);
+                    if (event.wheel.y > 0 || event.wheel.x > 0)
+                    {
+                        p_window->view_mod.scale_factor += 0.1;
+                    }
+                    else if (event.wheel.y < 0 || event.wheel.x < 0)
+                    {
+                        p_window->view_mod.scale_factor
+                            = p_window->view_mod.scale_factor <= 0.1
+                                  ? p_window->view_mod.scale_factor
+                                  : p_window->view_mod.scale_factor - 0.1;
+                    }
                 }
-                else if (event.wheel.y < 0)
+                else
                 {
-                    // p_window->view_mod.scale_factor
-                    //     = p_window->view_mod.scale_factor <= 0.1
-                    //           ? p_window->view_mod.scale_factor
-                    //           : p_window->view_mod.scale_factor - 0.1;
-                    p_window->view_mod.y_offset -= 20;
+                    if (event.wheel.y > 0)
+                    {
+                        p_window->view_mod.y_offset += 20;
+                    }
+                    else if (event.wheel.y < 0)
+                    {
+                        p_window->view_mod.y_offset -= 20;
+                    }
+                    else if (event.wheel.x > 0)
+                    {
+                        p_window->view_mod.x_offset -= 20;
+                    }
+                    else if (event.wheel.x < 0)
+                    {
+                        p_window->view_mod.x_offset += 20;
+                    }
                 }
-                else if (event.wheel.x > 0)
-                {
-                    p_window->view_mod.x_offset -= 20;
-                }
-                else if (event.wheel.x < 0)
-                {
-                    p_window->view_mod.x_offset += 20;
-                }
+
                 break;
+            // case SDL_MOUSEWHEEL:
+            //     if (event.wheel.y > 0)
+            //     {
+            //         p_window->view_mod.y_offset += 20;
+            //         // p_window->view_mod.scale_factor += 0.1;
+            //     }
+            //     else if (event.wheel.y < 0)
+            //     {
+            //         // p_window->view_mod.scale_factor
+            //         //     = p_window->view_mod.scale_factor <= 0.1
+            //         //           ? p_window->view_mod.scale_factor
+            //         //           : p_window->view_mod.scale_factor - 0.1;
+            //         p_window->view_mod.y_offset -= 20;
+            //     }
+            //     else if (event.wheel.x > 0)
+            //     {
+            //         p_window->view_mod.x_offset -= 20;
+            //     }
+            //     else if (event.wheel.x < 0)
+            //     {
+            //         p_window->view_mod.x_offset += 20;
+            //     }
+            //     break;
             case SDL_MOUSEBUTTONDOWN:
-                g_is_mouse_down = !g_is_mouse_down; // Set the flag when mouse
-                                                    // button is down
-                printf("mouse down: %d\n", g_is_mouse_down);
-                SDL_GetMouseState(&g_prev_mousex, &g_prev_mousey);
+                // in the future, this will be used for point selection
+                // SDL_GetMouseState(&mouseX, &mouseY);
+                // // find the nearest point
+                // int    nearest_point_idx = 0;
+                // double min_distance      = 100;
+
+                // for (int i = 0; i < p_window->p_spline_arr->size; i++)
+                // {
+                //     spline_t * p_spline
+                //         = p_window->p_spline_arr->p_spline_arr[i];
+                //     for (int j = 0; j < p_spline->size; j++)
+                //     {
+                //         double_vertex_t * p_vertex
+                //             = p_spline->pp_raw_vertices[j];
+                //         double distance = sqrt(pow(p_vertex->x - mouseX, 2)
+                //                                + pow(p_vertex->y - mouseY, 2));
+                //         if (distance < min_distance)
+                //         {
+                //             min_distance      = distance;
+                //             nearest_point_idx = j;
+                //         }
+                //     }
+                // }
+
+                // printf("nearest point: %d\n", nearest_point_idx);
+                
                 break;
+            // case SDL_MOUSEBUTTONUP:
+            //     g_activate_mouse = false;
+            //     printf("mouse up\n");
+            //     break;
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_LEAVE)
                 {
-                    g_is_mouse_down = false;
+                    g_activate_mouse = false;
                     printf("mouse left the window\n");
                 }
                 break;
             case SDL_MOUSEMOTION:
-                if (g_is_mouse_down)
+                if (g_activate_mouse)
                 { // Only track motion when mouse button is down
                     int current_mousex, current_mousey;
                     SDL_GetMouseState(&current_mousex, &current_mousey);
