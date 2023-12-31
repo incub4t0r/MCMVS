@@ -13,6 +13,7 @@ typedef struct double_vertex_t
     double x;
     double y;
     double z;
+    double t;
 } double_vertex_t;
 
 typedef struct raw_vertices_t

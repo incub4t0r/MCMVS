@@ -1,5 +1,7 @@
 # Modern Coordinate Modification and Verification System
 
+Video Demo (Click to YouTube):
+
 [<img src="https://i.ytimg.com/vi/pSm6CsjS5Rs/maxresdefault.jpg">](https://www.youtube.com/watch?v=pSm6CsjS5Rs)
 
 # Table of Contents
@@ -11,6 +13,7 @@
   - [MCMVS (2023)](#mcmvs-2023)
 - [TODO](#todo)
 - [Technical Details](#technical-details)
+- [Workspace](#workspace)
 
 # Introduction
 
@@ -73,3 +76,18 @@ A deeper explanation of the array of splines is a 2D array of pointers to spline
 The program then renders the splines in 3D space, and allows the user to rotate, move, and zoom the splines in 3D space.
 
 To apply rotations, each vector in the spline undergoes a rotation matrix transformation. The rotation matrix is calculated using the theta, phi, and psi values modified by the user.
+
+
+# Workspace
+
+Note:
+
+To fix the cubic spline interpolation lines failing to create a proper curve when points are overlapping, a distance modifier on the points is needed. On the plain points, calculate the distance between the points, and then create the cubic spline to follow the points sorted on distance.
+
+Note:
+
+Cubic spline interpolations cannot inherently fold a curve back on itself over the x axis. A different method needs to be used
+
+Note:
+
+Folding over the x axis can be solved by splitting the spline arrays when the x axis starts going backwards

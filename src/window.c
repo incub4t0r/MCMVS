@@ -7,6 +7,12 @@
 #include "../include/vertices.h"
 #include "../include/spline.h"
 #include <stdbool.h>
+#include <limits.h>
+#include <math.h>
+
+#define INTERPOLATE_SIZE 100
+#define POINT_SIZE       4
+#define CSERP_SIZE       1
 
 /**
  * @brief Creates a window and its renderer on heap.
@@ -173,6 +179,136 @@ static double_vertex_t d_apply_rotation (double_vertex_t vertex,
     return new_vertex;
 }
 
+typedef struct cubic_coefficients_t
+{
+    double a, b, c, d;
+} cubic_coefficients_t;
+
+// Define the function to calculate the cubic coefficients
+cubic_coefficients_t * calculate_spline_coefficients (
+    double_vertex_t ** pp_points, int size)
+{
+    cubic_coefficients_t * coefficients
+        = calloc(size, sizeof(cubic_coefficients_t));
+
+    double * h     = calloc(size, sizeof(double));
+    double * alpha = calloc(size, sizeof(double));
+    double * l     = calloc(size, sizeof(double));
+    double * mu    = calloc(size, sizeof(double));
+    double * z     = calloc(size, sizeof(double));
+
+    for (int i = 0; i < size - 1; i++)
+    {
+        h[i] = pp_points[i + 1]->x - pp_points[i]->x;
+    }
+
+    for (int i = 1; i < size - 1; i++)
+    {
+        alpha[i] = (3.0 / h[i]) * (pp_points[i + 1]->y - pp_points[i]->y)
+                   - (3.0 / h[i - 1]) * (pp_points[i]->y - pp_points[i - 1]->y);
+    }
+
+    l[0]  = 1.0;
+    mu[0] = 0.0;
+    z[0]  = 0.0;
+
+    for (int i = 1; i < size - 1; i++)
+    {
+        l[i] = 2.0 * (pp_points[i + 1]->x - pp_points[i - 1]->x)
+               - h[i - 1] * mu[i - 1];
+        mu[i] = h[i] / l[i];
+        z[i]  = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
+    }
+
+    l[size - 1]              = 1.0;
+    z[size - 1]              = 0.0;
+    coefficients[size - 1].c = 0.0;
+
+    for (int j = size - 2; j >= 0; j--)
+    {
+        coefficients[j].c = z[j] - mu[j] * coefficients[j + 1].c;
+        coefficients[j].b
+            = (pp_points[j + 1]->y - pp_points[j]->y) / h[j]
+              - h[j] * (coefficients[j + 1].c + 2.0 * coefficients[j].c) / 3.0;
+        coefficients[j].d
+            = (coefficients[j + 1].c - coefficients[j].c) / (3.0 * h[j]);
+        coefficients[j].a = pp_points[j]->y;
+    }
+
+    free(h);
+    free(alpha);
+    free(l);
+    free(mu);
+    free(z);
+
+    return coefficients;
+}
+
+// Define the function to generate the interpolated points
+double_vertex_t * generate_interpolated_points (
+    cubic_coefficients_t * coefficients,
+    double_vertex_t **     pp_points,
+    int                    size,
+    int                    num_points)
+{
+    double_vertex_t * interpolated_points
+        = calloc(num_points, sizeof(double_vertex_t));
+    double step = (pp_points[size - 1]->x - pp_points[0]->x) / (num_points - 1);
+
+    for (int i = 0; i < num_points; i++)
+    {
+        double x       = pp_points[0]->x + i * step;
+        int    segment = 0;
+
+        // Find the segment that x falls in
+        for (int j = 0; j < size - 1; j++)
+        {
+            if (x >= pp_points[j]->x && x <= pp_points[j + 1]->x)
+            {
+                segment = j;
+                break;
+            }
+        }
+
+        // Calculate the interpolated y value
+        double dx = x - pp_points[segment]->x;
+        double y  = coefficients[segment].a + coefficients[segment].b * dx
+                   + coefficients[segment].c * dx * dx
+                   + coefficients[segment].d * dx * dx * dx;
+
+        interpolated_points[i].x = x;
+        interpolated_points[i].y = y;
+    }
+
+    return interpolated_points;
+}
+
+// qsort function compare_double_vertex_x
+int compare_double_vertex_x (const void * a, const void * b)
+{
+    double_vertex_t * p1 = *(double_vertex_t **)a;
+    double_vertex_t * p2 = *(double_vertex_t **)b;
+    if (p1->x < p2->x)
+        return -1;
+    else if (p1->x > p2->x)
+        return 1;
+    else
+        return 0;
+}
+
+// qsort function compare_double_vertex_y
+int compare_double_vertex_y (const void * a, const void * b)
+{
+    double_vertex_t * p1 = *(double_vertex_t **)a;
+    double_vertex_t * p2 = *(double_vertex_t **)b;
+    if (p1->y < p2->y)
+        return -1;
+    else if (p1->y > p2->y)
+        return 1;
+    else
+        return 0;
+}
+
 /**
  *
  * @brief Prepares the window for rendering.
@@ -186,20 +322,6 @@ void window_prepare (window_t * p_window)
     SDL_RenderClear(p_window->p_renderer);
     SDL_SetRenderDrawColor(p_window->p_renderer, 255, 255, 255, 255);
 
-    // double theta = p_window->angles.theta;
-    // double phi   = p_window->angles.phi;
-    // double psi   = p_window->angles.psi;
-
-    // Rotation matrix
-    // const double rotation_x[3][3] = { { 1, 0, 0 },
-    //                                   { 0, cos(theta), -sin(theta) },
-    //                                   { 0, sin(theta), cos(theta) } };
-    // const double rotation_y[3][3] = { { cos(phi), 0, sin(phi) },
-    //                                   { 0, 1, 0 },
-    //                                   { -sin(phi), 0, cos(phi) } };
-    // const double rotation_z[3][3] = { { cos(psi), -sin(psi), 0 },
-    //                                   { sin(psi), cos(psi), 0 },
-    //                                   { 0, 0, 1 } };
     double theta_rad = p_window->angles.theta * M_PI / 180.0;
     double phi_rad   = p_window->angles.phi * M_PI / 180.0;
     double psi_rad   = p_window->angles.psi * M_PI / 180.0;
@@ -219,133 +341,293 @@ void window_prepare (window_t * p_window)
                   - sin(phi_rad) * cos(psi_rad),
               cos(phi_rad) * cos(theta_rad) } };
 
-    // // translate vertices to center
-    // double min_x = 0, min_y = 0, min_z = 0;
-    // double max_x = 0, max_y = 0, max_z = 0;
-    // double center_x = 0, center_y = 0, center_z = 0;
-
-    // for (int i = 0; i < p_window->p_spline_arr->size; i++)
-    // {
-    //     spline_t * p_spline = p_window->p_spline_arr->p_spline_arr[i];
-    //     for (int j = 0; j < p_spline->size; j++)
-    //     {
-    //         double_vertex_t * p_vertex = p_spline->pp_raw_vertices[j];
-    //         min_x                      = fmin(min_x, p_vertex->x);
-    //         min_y                      = fmin(min_y, p_vertex->y);
-    //         min_z                      = fmin(min_z, p_vertex->z);
-    //         max_x                      = fmax(max_x, p_vertex->x);
-    //         max_y                      = fmax(max_y, p_vertex->y);
-    //         max_z                      = fmax(max_z, p_vertex->z);
-    //     }
-    // }
-
-    // center_x = (max_x + min_x) / 2;
-    // center_y = (max_y + min_y) / 2;
-    // center_z = (max_z + min_z) / 2;
-
-    // // translate all vertices to center
-    // for (int i = 0; i < p_window->p_spline_arr->size; i++)
-    // {
-    //     spline_t * p_spline = p_window->p_spline_arr->p_spline_arr[i];
-    //     for (int j = 0; j < p_spline->size; j++)
-    //     {
-    //         double_vertex_t * p_vertex = p_spline->pp_raw_vertices[j];
-    //         p_vertex->x -= center_x;
-    //         p_vertex->y -= center_y;
-    //         p_vertex->z -= center_z;
-    //     }
-    // }
-
     for (int spline_idx = 0; spline_idx < p_window->p_spline_arr->size;
          spline_idx++)
     {
         spline_t * p_spline = p_window->p_spline_arr->p_spline_arr[spline_idx];
-        for (int vertex_idx = 0; vertex_idx < p_spline->size - 1; vertex_idx++)
+        spline_t * p_spline_rotated = spline_create();
+        for (int vertex_idx = 0; vertex_idx < p_spline->size; vertex_idx++)
         {
             double_vertex_t translated_vertex = d_apply_rotation(
                 *(p_spline->pp_raw_vertices[vertex_idx]), rotation_matrix);
-            // double_vertex_t translated_vertex = d_apply_rotation(
-            //     *(p_spline->pp_raw_vertices[vertex_idx]), rotation_x);
-            // translated_vertex = d_apply_rotation(translated_vertex,
-            // rotation_y); translated_vertex =
-            // d_apply_rotation(translated_vertex, rotation_z);
 
-            double_vertex_t translated_vertex2 = d_apply_rotation(
-                *(p_spline->pp_raw_vertices[vertex_idx + 1]), rotation_matrix);
-            // double_vertex_t translated_vertex2 = d_apply_rotation(
-            //     *(p_spline->pp_raw_vertices[vertex_idx + 1]), rotation_x);
-            // translated_vertex2
-            //     = d_apply_rotation(translated_vertex2, rotation_y);
-            // translated_vertex2
-            //     = d_apply_rotation(translated_vertex2, rotation_z);
-
-            SDL_Point point1
-                = { (int)(translated_vertex.x * p_window->view_mod.scale_factor)
-                        + p_window->view_mod.x_offset,
-                    (int)(translated_vertex.y * p_window->view_mod.scale_factor)
-                        + p_window->view_mod.y_offset };
-            SDL_Point point2 = {
-                (int)(translated_vertex2.x * p_window->view_mod.scale_factor)
+            translated_vertex = (double_vertex_t) {
+                (translated_vertex.x * p_window->view_mod.scale_factor)
                     + p_window->view_mod.x_offset,
-                (int)(translated_vertex2.y * p_window->view_mod.scale_factor)
-                    + p_window->view_mod.y_offset
+                (translated_vertex.y * p_window->view_mod.scale_factor)
+                    + p_window->view_mod.y_offset,
+                translated_vertex.z
             };
+            // draw the point
+            // SDL_Rect rect = { translated_vertex.x - (POINT_SIZE / 2),
+            //                   translated_vertex.y - (POINT_SIZE / 2),
+            //                   POINT_SIZE,
+            //                   POINT_SIZE };
+            // SDL_RenderFillRect(p_window->p_renderer, &rect);
+            spline_add_vertex(p_spline_rotated, &translated_vertex);
 
-            if (1 == p_window->present_points)
-            {
-                SDL_Rect rect = { point1.x - 2, point1.y - 2, 4, 4 };
-                SDL_RenderFillRect(p_window->p_renderer, &rect);
-                rect = (SDL_Rect) { point2.x - 2, point2.y - 2, 4, 4 };
-                SDL_RenderFillRect(p_window->p_renderer, &rect);
-            }
+            // double_vertex_t translated_vertex2 = d_apply_rotation(
+            //     *(p_spline->pp_raw_vertices[vertex_idx + 1]),
+            //     rotation_matrix);
+            // SDL_Point point1
+            //     = { (int)(translated_vertex.x *
+            //     p_window->view_mod.scale_factor)
+            //             + p_window->view_mod.x_offset,
+            //         (int)(translated_vertex.y *
+            //         p_window->view_mod.scale_factor)
+            //             + p_window->view_mod.y_offset };
+            // SDL_Point point2 = {
+            //     (int)(translated_vertex2.x * p_window->view_mod.scale_factor)
+            //         + p_window->view_mod.x_offset,
+            //     (int)(translated_vertex2.y * p_window->view_mod.scale_factor)
+            //         + p_window->view_mod.y_offset
+            // };
 
-            SDL_RenderDrawLine(
-                p_window->p_renderer, point1.x, point1.y, point2.x, point2.y);
+            // if (1 == p_window->present_points)
+            // {
+            //     SDL_Rect rect = { point1.x - 4, point1.y - 4, 8, 8 };
+            //     SDL_RenderFillRect(p_window->p_renderer, &rect);
+            //     rect = (SDL_Rect) { point2.x - 4, point2.y - 4, 8, 8 };
+            //     SDL_RenderFillRect(p_window->p_renderer, &rect);
+            // }
 
-            if (1 == p_window->show_mirror)
-            {
-                double_vertex_t mirror_vertex = d_apply_rotation(
-                    *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
-                          ->pp_raw_vertices[vertex_idx]),
-                    rotation_matrix);
-                // double_vertex_t mirror_vertex = d_apply_rotation(
-                //     *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
-                //           ->pp_raw_vertices[vertex_idx]),
-                //     rotation_x);
-                // mirror_vertex = d_apply_rotation(mirror_vertex, rotation_y);
-                // mirror_vertex = d_apply_rotation(mirror_vertex, rotation_z);
-
-                SDL_Point mirror_point1
-                    = { mirror_vertex.x * p_window->view_mod.scale_factor
-                            + p_window->view_mod.x_offset,
-                        mirror_vertex.y * p_window->view_mod.scale_factor
-                            + p_window->view_mod.y_offset };
-
-                double_vertex_t mirror_vertex2 = d_apply_rotation(
-                    *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
-                          ->pp_raw_vertices[vertex_idx + 1]),
-                    rotation_matrix);
-                // double_vertex_t mirror_vertex2 = d_apply_rotation(
-                //     *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
-                //           ->pp_raw_vertices[vertex_idx + 1]),
-                //     rotation_x);
-                // mirror_vertex2 = d_apply_rotation(mirror_vertex2,
-                // rotation_y); mirror_vertex2 =
-                // d_apply_rotation(mirror_vertex2, rotation_z);
-
-                SDL_Point mirror_point2
-                    = { mirror_vertex2.x * p_window->view_mod.scale_factor
-                            + p_window->view_mod.x_offset,
-                        mirror_vertex2.y * p_window->view_mod.scale_factor
-                            + p_window->view_mod.y_offset };
-
-                SDL_RenderDrawLine(p_window->p_renderer,
-                                   mirror_point1.x,
-                                   mirror_point1.y,
-                                   mirror_point2.x,
-                                   mirror_point2.y);
-            }
+            // SDL_RenderDrawLine(
+            //     p_window->p_renderer, point1.x, point1.y, point2.x,
+            //     point2.y);
+            //     if (1 == p_window->show_mirror)
+            //     {
+            //         double_vertex_t mirror_vertex = d_apply_rotation(
+            //             *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
+            //                   ->pp_raw_vertices[vertex_idx]),
+            //             rotation_matrix);
+            //         // double_vertex_t mirror_vertex = d_apply_rotation(
+            //         //
+            //         *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
+            //         //           ->pp_raw_vertices[vertex_idx]),
+            //         //     rotation_x);
+            //         // mirror_vertex = d_apply_rotation(mirror_vertex,
+            //         rotation_y);
+            //         // mirror_vertex = d_apply_rotation(mirror_vertex,
+            //         rotation_z);
+            //         SDL_Point mirror_point1
+            //             = { mirror_vertex.x * p_window->view_mod.scale_factor
+            //                     + p_window->view_mod.x_offset,
+            //                 mirror_vertex.y * p_window->view_mod.scale_factor
+            //                     + p_window->view_mod.y_offset };
+            //         double_vertex_t mirror_vertex2 = d_apply_rotation(
+            //             *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
+            //                   ->pp_raw_vertices[vertex_idx + 1]),
+            //             rotation_matrix);
+            //         // double_vertex_t mirror_vertex2 = d_apply_rotation(
+            //         //
+            //         *(p_window->p_mirror_spline_arr->p_spline_arr[spline_idx]
+            //         //           ->pp_raw_vertices[vertex_idx + 1]),
+            //         //     rotation_x);
+            //         // mirror_vertex2 = d_apply_rotation(mirror_vertex2,
+            //         // rotation_y); mirror_vertex2 =
+            //         // d_apply_rotation(mirror_vertex2, rotation_z);
+            //         SDL_Point mirror_point2
+            //             = { mirror_vertex2.x *
+            //             p_window->view_mod.scale_factor
+            //                     + p_window->view_mod.x_offset,
+            //                 mirror_vertex2.y *
+            //                 p_window->view_mod.scale_factor
+            //                     + p_window->view_mod.y_offset };
+            //         SDL_RenderDrawLine(p_window->p_renderer,
+            //                            mirror_point1.x,
+            //                            mirror_point1.y,
+            //                            mirror_point2.x,
+            //                            mirror_point2.y);
+            //     }
         }
+
+        // sort p_spline_rotated->pp_raw_vertices by x
+
+        // iterate through the spline until x direction changes
+        spline_t *        p_subspline   = spline_create();
+        double               direction     = 0;
+        double_vertex_t * p_prev_vertex = p_spline_rotated->pp_raw_vertices[0];
+        double_vertex_t * p_curr_vertex = p_spline_rotated->pp_raw_vertices[1];
+        direction = p_curr_vertex->x >= p_prev_vertex->x ? 1 : -1;
+        // direction = p_curr_vertex->x - p_prev_vertex->x;
+        spline_add_vertex(p_subspline, p_prev_vertex);
+        spline_add_vertex(p_subspline, p_curr_vertex);
+        p_prev_vertex     = p_curr_vertex;
+        int spline_idx    = 2;
+        double new_direction = 0;
+        while (spline_idx < p_spline_rotated->size)
+        {
+            p_curr_vertex = p_spline_rotated->pp_raw_vertices[spline_idx];
+            // new_direction = p_curr_vertex->x - p_prev_vertex->x;
+            new_direction = p_curr_vertex->x >= p_prev_vertex->x ? 1 : -1;
+            if (new_direction != direction || fabs(p_curr_vertex->x - p_prev_vertex->x) < 10) // added too close check
+            {
+                if (p_subspline->size >= 3) // added equality check
+                {
+                    // sort subspline on y
+                    // qsort(p_subspline->pp_raw_vertices,
+                    //       p_subspline->size,
+                    //       sizeof(double_vertex_t *),
+                    //       compare_double_vertex_y);
+
+                    printf("Rendering spline for idx %d\n", spline_idx);
+                    cubic_coefficients_t * coefficients
+                        = calculate_spline_coefficients(
+                            p_subspline->pp_raw_vertices, p_subspline->size);
+
+                    double_vertex_t * interpolated_points
+                        = generate_interpolated_points(
+                            coefficients,
+                            p_subspline->pp_raw_vertices,
+                            p_subspline->size,
+                            INTERPOLATE_SIZE);
+
+                    for (int i = 0; i < INTERPOLATE_SIZE; i++)
+                    {
+                        SDL_Rect rect
+                            = { interpolated_points[i].x - (CSERP_SIZE / 2),
+                                spline_idx * 10,
+                                CSERP_SIZE,
+                                CSERP_SIZE };
+                        SDL_RenderDrawRect(p_window->p_renderer, &rect);
+
+                        rect = (SDL_Rect) {
+                            interpolated_points[i].x - (CSERP_SIZE / 2),
+                            interpolated_points[i].y - (CSERP_SIZE / 2),
+                            CSERP_SIZE,
+                            CSERP_SIZE
+                        };
+                        SDL_RenderDrawRect(p_window->p_renderer, &rect);
+                    }
+                    free(interpolated_points);
+                    free(coefficients);
+                }
+                spline_destroy(p_subspline);
+                p_subspline = spline_create();
+                direction   = new_direction;
+                spline_add_vertex(p_subspline, p_curr_vertex);
+            }
+            else
+            {
+                spline_add_vertex(p_subspline, p_curr_vertex);
+            }
+            spline_idx++;
+            p_prev_vertex = p_curr_vertex;
+        }
+        // sort on x
+        qsort(p_subspline->pp_raw_vertices,
+              p_subspline->size,
+              sizeof(double_vertex_t *),
+              compare_double_vertex_x);
+        // if (p_subspline->size > 3)
+        {
+            printf("Rendering spline for idx %d\n", spline_idx);
+            cubic_coefficients_t * coefficients = calculate_spline_coefficients(
+                p_subspline->pp_raw_vertices, p_subspline->size);
+
+            double_vertex_t * interpolated_points
+                = generate_interpolated_points(coefficients,
+                                               p_subspline->pp_raw_vertices,
+                                               p_subspline->size,
+                                               INTERPOLATE_SIZE);
+
+            for (int i = 0; i < INTERPOLATE_SIZE; i++)
+            {
+                SDL_Rect rect = { interpolated_points[i].x - (CSERP_SIZE / 2),
+                                  spline_idx * 10,
+                                  CSERP_SIZE,
+                                  CSERP_SIZE };
+                SDL_RenderDrawRect(p_window->p_renderer, &rect);
+
+                rect = (SDL_Rect) { interpolated_points[i].x - (CSERP_SIZE / 2),
+                                    interpolated_points[i].y - (CSERP_SIZE / 2),
+                                    CSERP_SIZE,
+                                    CSERP_SIZE };
+                SDL_RenderDrawRect(p_window->p_renderer, &rect);
+            }
+            free(interpolated_points);
+            free(coefficients);
+        }
+
+        // cubic_coefficients_t * coefficients = calculate_spline_coefficients(
+        //     p_spline_rotated->pp_raw_vertices, p_spline_rotated->size);
+
+        // // Generate the interpolated points
+        // double_vertex_t * interpolated_points
+        //     = generate_interpolated_points(coefficients,
+        //                                    p_spline_rotated->pp_raw_vertices,
+        //                                    p_spline_rotated->size,
+        //                                    INTERPOLATE_SIZE);
+
+        // // draw interpolated subsplines until direction changes
+        // spline_t *        p_subspline   = spline_create();
+        // int               direction     = 0;
+        // double_vertex_t * p_prev_vertex = &interpolated_points[0];
+        // double_vertex_t * p_curr_vertex = &interpolated_points[1];
+        // direction = p_curr_vertex->x > p_prev_vertex->x ? 1 : -1;
+        // spline_add_vertex(p_subspline, p_prev_vertex);
+        // spline_add_vertex(p_subspline, p_curr_vertex);
+        // p_prev_vertex     = p_curr_vertex;
+        // int spline_idx    = 2;
+        // int new_direction = 0;
+        // for (;spline_idx < INTERPOLATE_SIZE; spline_idx++)
+        // {
+        //     p_curr_vertex = &interpolated_points[spline_idx];
+        //     new_direction = p_curr_vertex->x > p_prev_vertex->x ? 1 : -1;
+
+        //     if (direction != new_direction)
+        //     {
+        //         spline_destroy(p_subspline);
+        //         p_subspline = spline_create();
+        //         direction   = new_direction;
+        //     }
+        //     else
+        //     {
+        //         if (p_subspline->size > 3)
+        //         {
+        //             printf("Rendering spline for idx %d\n", spline_idx);
+        //             cubic_coefficients_t * coefficients
+        //                 = calculate_spline_coefficients(
+        //                     p_subspline->pp_raw_vertices, p_subspline->size);
+
+        //             double_vertex_t * interpolated_points
+        //                 = generate_interpolated_points(
+        //                     coefficients,
+        //                     p_subspline->pp_raw_vertices,
+        //                     p_subspline->size,
+        //                     INTERPOLATE_SIZE);
+
+        //             for (int i = 0; i < INTERPOLATE_SIZE; i++)
+        //             {
+        //                 SDL_Rect rect
+        //                     = { interpolated_points[i].x - (CSERP_SIZE / 2),
+        //                         interpolated_points[i].y - (CSERP_SIZE / 2),
+        //                         CSERP_SIZE,
+        //                         CSERP_SIZE };
+        //                 SDL_RenderDrawRect(p_window->p_renderer, &rect);
+        //             }
+        //             free(interpolated_points);
+        //             free(coefficients);
+        //         }
+        //     }
+
+        //     spline_add_vertex(p_subspline, p_curr_vertex);
+        //     spline_idx++;
+        //     p_prev_vertex = p_curr_vertex;
+        // }
+
+        // Draw the interpolated points
+        // for (int i = 0; i < INTERPOLATE_SIZE; i++)
+        // {
+        //     SDL_Rect rect = { interpolated_points[i].x - (CSERP_SIZE / 2),
+        //                       interpolated_points[i].y - (CSERP_SIZE / 2),
+        //                       CSERP_SIZE,
+        //                       CSERP_SIZE };
+        //     SDL_RenderDrawRect(p_window->p_renderer, &rect);
+        // }
+        // free(interpolated_points);
+        // free(coefficients);
+        // spline_destroy(p_spline_rotated);
     }
 }
 
@@ -359,20 +641,6 @@ void window_present (window_t * p_window)
     SDL_RenderPresent(p_window->p_renderer);
 }
 
-// /**
-//  * @brief Adds a point to the window's points.
-//  *
-//  * @param p_window Pointer to the window to add the point to.
-//  * @param new_point The point to add.
-//  */
-// void window_add_point (window_t * p_window, SDL_Point new_point)
-// {
-//     p_window->p_points->size++;
-//     p_window->p_points->p_points
-//         = realloc(p_window->p_points->p_points,
-//                   p_window->p_points->size * sizeof(SDL_Point));
-//     p_window->p_points->p_points[p_window->p_points->size - 1] = new_point;
-// }
 bool g_activate_mouse = false;
 int  g_prev_mousex = 0, g_prev_mousey = 0;
 
@@ -554,7 +822,8 @@ void window_input (window_t * p_window)
                 //         double_vertex_t * p_vertex
                 //             = p_spline->pp_raw_vertices[j];
                 //         double distance = sqrt(pow(p_vertex->x - mouseX, 2)
-                //                                + pow(p_vertex->y - mouseY, 2));
+                //                                + pow(p_vertex->y - mouseY,
+                //                                2));
                 //         if (distance < min_distance)
                 //         {
                 //             min_distance      = distance;
@@ -564,7 +833,7 @@ void window_input (window_t * p_window)
                 // }
 
                 // printf("nearest point: %d\n", nearest_point_idx);
-                
+
                 break;
             // case SDL_MOUSEBUTTONUP:
             //     g_activate_mouse = false;
